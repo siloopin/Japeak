@@ -1,5 +1,18 @@
 # Japeak (자피크) - AI 기반 일본어 학습 앱 🗻
 
+<div align="center">
+  <img src="./assets/japeak_mockup.png" alt="Japeak App Mockup" width="400" />
+</div>
+
+### 📱 Japeak App UI
+
+<div align="center">
+  <img src="./assets/japeak_mockup_login.png" alt="Login Screen" width="30%" />
+  <img src="./assets/japeak_mockup_home.png" alt="Home Screen" width="30%" />
+  <img src="./assets/japeak_mockup_review.png" alt="Review Note Screen" width="30%" />
+</div>
+
+
 Japeak은 JLPT(일본어 능력 시험) 및 기초 일본어 학습자를 위한 **AI 하이브리드 맞춤형 퀴즈 어플리케이션**입니다. 기존의 고정된 단어장을 넘어, 생성형 AI(Gemini, Groq)를 활용해 무한한 예문과 퀴즈를 생성하고 사용자의 학습 수준에 맞춰 실시간으로 난이도를 조절합니다.
 
 해당 레포지토리는 프론트엔드(React Native)와 백엔드(Spring Boot)를 통합 관리하는 **Monorepo**입니다.
