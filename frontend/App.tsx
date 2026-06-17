@@ -9,6 +9,7 @@ import ChatScreen from './src/screens/ChatScreen';
 import SplashScreen from './src/screens/SplashScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import LevelSelectScreen from './src/screens/LevelSelectScreen';
+import ReviewNoteScreen from './src/screens/ReviewNoteScreen';
 
 import { useAuthStore } from './src/store/authStore';
 
@@ -21,6 +22,7 @@ export type RootStackParamList = {
   Chat: undefined;
   Login: undefined;
   LevelSelect: undefined;
+  ReviewNote: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -89,6 +91,11 @@ export default function App() {
               name="Chat" 
               component={ChatScreen} 
               options={{ title: 'AI 회화 연습' }} 
+            />
+            <Stack.Screen 
+              name="ReviewNote" 
+              component={ReviewNoteScreen} 
+              options={{ title: '오답노트', headerBackTitle: '홈' }} 
             />
           </>
         )}

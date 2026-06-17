@@ -37,9 +37,11 @@ public class GroqService {
                 0. Difficulty: If 'Beginner', provide VERY basic beginner Japanese words. Otherwise, follow JLPT standards.
                 1. If consecutive correct answers is high, you may slightly increase difficulty (e.g. Beginner -> N5) in 'new_difficulty'. Otherwise maintain or decrease.
                 2. Type is always 'word'.
-                3. 'question' is the Japanese word. 'options' are 4 Korean meanings. 'answer' is the correct Korean meaning.
-                4. For simple mode, set 'example_sentence' and 'example_meaning' to empty strings. Set 'kanji_words' to an empty array [].
-                5. Return a valid JSON object.
+                3. 'question' is the JAPANESE word (Kanji/Hiragana). 
+                4. 'options' MUST be 4 KOREAN meanings. 'answer' MUST be the correct KOREAN meaning. DO NOT USE ENGLISH.
+                5. Provide an 'example_sentence' in Japanese using the target word, and 'example_meaning' in KOREAN.
+                6. In 'kanji_words', provide an array of objects for EVERY Japanese word containing Kanji in the 'example_sentence'. For each word, provide 'word', 'reading' (hiragana), 'meaning' (KOREAN), and 'radical' (KOREAN description).
+                7. Return a valid JSON object.
                 
                 JSON format:
                 {
@@ -48,10 +50,13 @@ public class GroqService {
                   "options": ["string", "string", "string", "string"],
                   "answer": "string",
                   "word": "target japanese word",
+                  "reading": "hiragana reading of the target word",
                   "meaning": "korean meaning",
-                  "example_sentence": "",
-                  "example_meaning": "",
-                  "kanji_words": [],
+                  "example_sentence": "japanese sentence",
+                  "example_meaning": "korean translation",
+                  "kanji_words": [
+                    { "word": "string", "reading": "string", "meaning": "string", "radical": "string" }
+                  ],
                   "new_difficulty": "Beginner" | "N5" | "N4" | "N3" | "N2" | "N1"
                 }
                 """, currentDifficulty, wasCorrect == null ? "N/A" : wasCorrect.toString(), consecutiveCorrect);
@@ -68,9 +73,11 @@ public class GroqService {
                 0. Difficulty: If 'Beginner', provide VERY basic beginner Japanese. Otherwise, follow JLPT standards.
                 1. Adjust 'new_difficulty' based on performance.
                 2. Type randomly 'word' or 'sentence'.
-                3. Provide an 'example_sentence' in Japanese using the target word, and 'example_meaning' in Korean.
-                4. In 'kanji_words', provide an array of objects for EVERY Japanese word containing Kanji in the 'example_sentence'. For each word, provide 'word', 'reading' (hiragana), 'meaning' (korean), and 'radical' (korean description).
-                5. Return a valid JSON object matching exactly this structure.
+                3. If type is 'word', 'question' is the JAPANESE word. If type is 'sentence', 'question' is a Japanese sentence with a blank (e.g. _____).
+                4. 'options' MUST be 4 KOREAN meanings or words. 'answer' MUST be the correct KOREAN option. DO NOT USE ENGLISH.
+                5. Provide an 'example_sentence' in Japanese using the target word, and 'example_meaning' in KOREAN.
+                6. In 'kanji_words', provide an array of objects for EVERY Japanese word containing Kanji in the 'example_sentence'. For each word, provide 'word', 'reading' (hiragana), 'meaning' (KOREAN), and 'radical' (KOREAN description).
+                7. Return a valid JSON object matching exactly this structure.
                 
                 JSON format:
                 {
@@ -79,6 +86,7 @@ public class GroqService {
                   "options": ["string", "string", "string", "string"],
                   "answer": "string",
                   "word": "target japanese word",
+                  "reading": "hiragana reading of the target word",
                   "meaning": "korean meaning",
                   "example_sentence": "japanese sentence",
                   "example_meaning": "korean translation",

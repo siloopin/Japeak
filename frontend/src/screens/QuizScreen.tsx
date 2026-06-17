@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Alert, ActivityIndicator, ScrollView, Modal, TouchableWithoutFeedback } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { generateNextQuiz, submitQuizAnswer, getReviewQuizzes, GeneratedQuiz, QuizDifficulty, KanjiWord } from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -117,26 +118,26 @@ export default function QuizScreen({ navigation, route }: Props) {
   const currentQuiz = questions[currentIndex];
   const progress = ((currentIndex) / totalQuestions) * 100;
 
-  const renderExampleSentence = () => {
-    if (!currentQuiz.kanji_words || currentQuiz.kanji_words.length === 0) {
-      return <Text style={styles.exampleJp}>{currentQuiz.example_sentence}</Text>;
+  const renderWithKanjiHighlight = (text: string, textStyle: any, highlightStyle: any = styles.kanjiHighlight) => {
+    if (!text || !currentQuiz.kanji_words || currentQuiz.kanji_words.length === 0) {
+      return <Text style={textStyle}>{text}</Text>;
     }
 
     const words = currentQuiz.kanji_words.map(k => k.word).filter(Boolean);
-    if (words.length === 0) return <Text style={styles.exampleJp}>{currentQuiz.example_sentence}</Text>;
+    if (words.length === 0) return <Text style={textStyle}>{text}</Text>;
 
     const regex = new RegExp(`(${words.join('|')})`, 'g');
-    const parts = currentQuiz.example_sentence.split(regex);
+    const parts = text.split(regex);
 
     return (
-      <Text style={styles.exampleJp}>
+      <Text style={textStyle}>
         {parts.map((part, index) => {
           const kanjiMatch = currentQuiz.kanji_words.find(k => k.word === part);
           if (kanjiMatch) {
             return (
               <Text 
                 key={index} 
-                style={styles.kanjiHighlight} 
+                style={[highlightStyle, { fontSize: textStyle?.fontSize || 16 }]} 
                 onPress={() => setSelectedKanji(kanjiMatch)}
               >
                 {part}
@@ -170,9 +171,13 @@ export default function QuizScreen({ navigation, route }: Props) {
 
       <View style={styles.quizContainer}>
         <Text style={styles.questionType}>
-          {currentQuiz.type === 'sentence' ? '빈칸에 알맞은 단어를 고르세요' : '다음 단어의 뜻을 고르세요'}
+          {currentQuiz.type === 'word' ? '다음 단어의 뜻은?' : '다음 문장의 빈칸에 들어갈 말은?'}
         </Text>
-        <Text style={styles.questionText}>{currentQuiz.question}</Text>
+        {currentQuiz.type === 'word' ? (
+          renderWithKanjiHighlight(currentQuiz.word || currentQuiz.question, [styles.questionText, { fontSize: 42, marginTop: 10 }], [styles.kanjiHighlight, { color: '#2563EB' }])
+        ) : (
+          renderWithKanjiHighlight(currentQuiz.question, styles.questionText, [styles.kanjiHighlight, { color: '#2563EB' }])
+        )}
       </View>
 
       <ScrollView contentContainerStyle={styles.optionsContainer} showsVerticalScrollIndicator={false}>
@@ -217,12 +222,13 @@ export default function QuizScreen({ navigation, route }: Props) {
             {/* 정답/오답 상세 정보 및 예문 */}
             <View style={styles.exampleContainer}>
               <Text style={styles.wordInfo}>
-                <Text style={{ fontWeight: 'bold' }}>{currentQuiz.word}</Text> : {currentQuiz.meaning}
+                <Text style={{ fontWeight: 'bold' }}>{renderWithKanjiHighlight(currentQuiz.word, null, [styles.kanjiHighlight, { color: '#059669' }])}</Text>
+                {currentQuiz.reading ? ` (${currentQuiz.reading})` : ''} : {currentQuiz.meaning}
               </Text>
               {isCorrect && currentQuiz.example_sentence && (
                 <View style={styles.exampleBox}>
                   <Text style={styles.exampleTitle}>💡 활용 예문</Text>
-                  {renderExampleSentence()}
+                  {renderWithKanjiHighlight(currentQuiz.example_sentence, styles.exampleJp)}
                   <Text style={styles.exampleKo}>{currentQuiz.example_meaning}</Text>
                 </View>
               )}
@@ -240,36 +246,39 @@ export default function QuizScreen({ navigation, route }: Props) {
             )}
           </TouchableOpacity>
         </View>
+      </View>
       )}
       {/* 한자 상세 정보 모달 */}
       <Modal
         visible={!!selectedKanji}
         transparent={true}
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setSelectedKanji(null)}
       >
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setSelectedKanji(null)}>
-          <TouchableWithoutFeedback>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalWord}>{selectedKanji?.word}</Text>
-                <Text style={styles.modalReading}>{selectedKanji?.reading}</Text>
-              </View>
-              <Text style={styles.modalMeaning}>{selectedKanji?.meaning}</Text>
-              
-              {selectedKanji?.radical && (
-                <View style={styles.radicalBox}>
-                  <Text style={styles.radicalLabel}>부수 정보</Text>
-                  <Text style={styles.radicalText}>{selectedKanji.radical}</Text>
+        <BlurView intensity={30} tint="dark" style={styles.modalOverlay}>
+          <TouchableOpacity style={{flex: 1, width: '100%', justifyContent: 'flex-end'}} activeOpacity={1} onPress={() => setSelectedKanji(null)}>
+            <TouchableWithoutFeedback>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalWord}>{selectedKanji?.word}</Text>
+                  <Text style={styles.modalReading}>{selectedKanji?.reading}</Text>
                 </View>
-              )}
+                <Text style={styles.modalMeaning}>{selectedKanji?.meaning}</Text>
+                
+                {selectedKanji?.radical && (
+                  <View style={styles.radicalBox}>
+                    <Text style={styles.radicalLabel}>부수 정보</Text>
+                    <Text style={styles.radicalText}>{selectedKanji.radical}</Text>
+                  </View>
+                )}
 
-              <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setSelectedKanji(null)}>
-                <Text style={styles.modalCloseText}>닫기</Text>
-              </TouchableOpacity>
-            </View>
-          </TouchableWithoutFeedback>
-        </TouchableOpacity>
+                <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setSelectedKanji(null)}>
+                  <Text style={styles.modalCloseText}>닫기</Text>
+                </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
+          </TouchableOpacity>
+        </BlurView>
       </Modal>
 
     </SafeAreaView>

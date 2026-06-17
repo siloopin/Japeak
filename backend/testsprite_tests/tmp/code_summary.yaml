@@ -1,0 +1,68 @@
+version: "2"
+type: backend
+tech_stack:
+  - Java 17
+  - Spring Boot
+  - MySQL
+  - Gradle
+  - JWT
+features:
+  - name: Authentication API
+    description: Manages user authentication
+    files:
+      - src/main/java/com/japeak/server/controller/AuthController.java
+    endpoints:
+      - method: POST
+        path: /api/auth/register
+        description: Register a new user
+        auth_required: false
+        request_schema:
+          body:
+            email: string
+            password: string
+            nickname: string
+        response_schema:
+          "200": "{ token: string, user: User }"
+      - method: POST
+        path: /api/auth/login
+        description: Login a user
+        auth_required: false
+        request_schema:
+          body:
+            email: string
+            password: string
+        response_schema:
+          "200": "{ token: string, user: User }"
+  - name: Quiz Management API
+    description: Generates and logs quizzes
+    files:
+      - src/main/java/com/japeak/server/controller/QuizController.java
+      - src/main/java/com/japeak/server/service/GeminiService.java
+      - src/main/java/com/japeak/server/service/GroqService.java
+    endpoints:
+      - method: GET
+        path: /api/quiz/next
+        description: Gets the next quiz based on difficulty and history
+        auth_required: true
+        request_schema:
+          query:
+            difficulty: string
+            wasCorrect: boolean
+            consecutiveCorrect: number
+        response_schema:
+          "200": QuizDto
+      - method: POST
+        path: /api/quiz/answer
+        description: Logs a user's quiz attempt
+        auth_required: true
+        request_schema:
+          body:
+            quizId: number
+            isCorrect: boolean
+        response_schema:
+          "200": "{ success: boolean }"
+    depends_on:
+      - Gemini API
+      - Groq API
+      - Database Cache
+known_limitations: []

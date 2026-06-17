@@ -40,3 +40,5 @@ out/
 .env
 .env.*
 application-secret.yml
+
+testsprite_tests/tmp/config.json

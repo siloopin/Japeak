@@ -16,6 +16,7 @@ export interface GeneratedQuiz {
   options: string[];
   answer: string;
   word: string;
+  reading?: string;
   meaning: string;
   example_sentence: string;
   example_meaning: string;
@@ -99,6 +100,41 @@ export const getReviewQuizzes = async (token: string | null, mode: 'review_incor
     return quizzes;
   } catch (error) {
     console.error("Failed to fetch review quizzes:", error);
+    return [];
+  }
+};
+
+export interface HistoryLogDto {
+  logId: number;
+  quizId: number;
+  type: string;
+  question: string;
+  answer: string;
+  word: string;
+  meaning: string;
+  exampleSentence?: string;
+  exampleMeaning?: string;
+  isCorrect: boolean;
+  answeredAt: string;
+  dayStudied: number;
+}
+
+export const fetchQuizHistory = async (token: string | null, year: number, month: number): Promise<HistoryLogDto[]> => {
+  if (!token) return [];
+  try {
+    const response = await fetch(`${BASE_URL}/api/quiz/history?year=${year}&month=${month}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
+    if (!response.ok) {
+      console.error('Failed to fetch history', response.status);
+      return [];
+    }
+    return await response.json();
+  } catch (error) {
+    console.error('fetchQuizHistory error:', error);
     return [];
   }
 };

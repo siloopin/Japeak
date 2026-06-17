@@ -102,6 +102,13 @@ export default function HomeScreen({ navigation }: Props) {
               
               <View style={{ gap: 10 }}>
                 <TouchableOpacity 
+                  style={[styles.reviewButton, { backgroundColor: '#DBEAFE', borderColor: '#BFDBFE' }]}
+                  onPress={() => navigation.navigate('ReviewNote')}
+                >
+                  <Text style={[styles.reviewButtonText, { color: '#1E3A8A' }]}>📊 전체 학습 기록 및 오답노트 보기</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
                   style={styles.reviewButton}
                   onPress={() => navigation.navigate('Quiz', { mode: 'review_incorrect' })}
                 >

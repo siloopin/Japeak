@@ -13,6 +13,7 @@ public class QuizDto {
     private List<String> options;
     private String answer;
     private String word;
+    private String reading;
     private String meaning;
     private String example_sentence;
     private String example_meaning;

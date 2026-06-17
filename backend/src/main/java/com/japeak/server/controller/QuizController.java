@@ -7,6 +7,7 @@ import com.japeak.server.domain.Quiz;
 import com.japeak.server.domain.User;
 import com.japeak.server.domain.UserQuizLog;
 import com.japeak.server.dto.QuizDto;
+import com.japeak.server.dto.HistoryLogDto;
 import com.japeak.server.repository.QuizRepository;
 import com.japeak.server.repository.UserQuizLogRepository;
 import com.japeak.server.repository.UserRepository;
@@ -96,6 +97,12 @@ public class QuizController {
                 quizJsonString = groqService.generateQuiz(difficulty, wasCorrect, consecutiveCorrect, false);
             }
         }
+        
+        // Clean up possible Markdown formatting from AI
+        if (quizJsonString != null) {
+            quizJsonString = quizJsonString.replaceAll("```json\\s*", "").replaceAll("```\\s*", "").trim();
+        }
+
         try {
             QuizDto dto = objectMapper.readValue(quizJsonString, QuizDto.class);
             
@@ -107,6 +114,7 @@ public class QuizController {
             quiz.setAnswer(dto.getAnswer());
             quiz.setOptionsJson(objectMapper.writeValueAsString(dto.getOptions()));
             quiz.setWord(dto.getWord());
+            quiz.setReading(dto.getReading());
             quiz.setMeaning(dto.getMeaning());
             quiz.setExampleSentence(dto.getExample_sentence());
             quiz.setExampleMeaning(dto.getExample_meaning());
@@ -154,6 +162,39 @@ public class QuizController {
         return ResponseEntity.ok(dtos);
     }
 
+    @GetMapping("/history")
+    public ResponseEntity<?> getHistory(@RequestHeader("Authorization") String token,
+                                        @RequestParam("year") int year,
+                                        @RequestParam("month") int month) {
+        String email = jwtUtil.parseToken(token.replace("Bearer ", "")).getSubject();
+        Optional<User> userOpt = userRepository.findByEmail(email);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(401).body(Map.of("error", "User not found"));
+        }
+        User user = userOpt.get();
+        List<UserQuizLog> logs = userQuizLogRepository.findByUserIdAndYearAndMonth(user.getId(), year, month);
+
+        List<HistoryLogDto> history = logs.stream().map(log -> {
+            HistoryLogDto dto = new HistoryLogDto();
+            dto.setLogId(log.getId());
+            dto.setQuizId(log.getQuiz().getId());
+            dto.setType(log.getQuiz().getType());
+            dto.setQuestion(log.getQuiz().getQuestion());
+            dto.setAnswer(log.getQuiz().getAnswer());
+            dto.setWord(log.getQuiz().getWord());
+            dto.setReading(log.getQuiz().getReading());
+            dto.setMeaning(log.getQuiz().getMeaning());
+            dto.setExampleSentence(log.getQuiz().getExampleSentence());
+            dto.setExampleMeaning(log.getQuiz().getExampleMeaning());
+            dto.setIsCorrect(log.getIsCorrect());
+            dto.setAnsweredAt(log.getAnsweredAt());
+            dto.setDayStudied(java.time.temporal.ChronoUnit.DAYS.between(user.getCreatedAt().toLocalDate(), log.getAnsweredAt().toLocalDate()) + 1);
+            return dto;
+        }).collect(Collectors.toList());
+
+        return ResponseEntity.ok(history);
+    }
+
     private QuizDto convertToDto(Quiz quiz, String currentDifficulty) {
         QuizDto dto = new QuizDto();
         dto.setId(quiz.getId());
@@ -161,6 +202,7 @@ public class QuizController {
         dto.setQuestion(quiz.getQuestion());
         dto.setAnswer(quiz.getAnswer());
         dto.setWord(quiz.getWord());
+        dto.setReading(quiz.getReading());
         dto.setMeaning(quiz.getMeaning());
         dto.setExample_sentence(quiz.getExampleSentence());
         dto.setExample_meaning(quiz.getExampleMeaning());

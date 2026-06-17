@@ -9,6 +9,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
@@ -32,7 +34,7 @@ public class AuthController {
 
         User user = new User();
         user.setEmail(request.getEmail());
-        user.setPassword(request.getPassword()); // In production, hash this!
+        user.setPassword(hashPassword(request.getPassword()));
         user.setNickname(request.getNickname() != null ? request.getNickname() : request.getEmail().split("@")[0]);
         userRepository.save(user);
 
@@ -43,7 +45,7 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody AuthRequest request) {
         Optional<User> userOpt = userRepository.findByEmail(request.getEmail());
-        if (userOpt.isEmpty() || !userOpt.get().getPassword().equals(request.getPassword())) {
+        if (userOpt.isEmpty() || !userOpt.get().getPassword().equals(hashPassword(request.getPassword()))) {
             return ResponseEntity.status(401).body(Map.of("error", "Invalid credentials"));
         }
 
@@ -97,6 +99,25 @@ public class AuthController {
         long daysStudied = ChronoUnit.DAYS.between(user.getCreatedAt().toLocalDate(), LocalDateTime.now().toLocalDate()) + 1;
         dto.put("daysStudied", daysStudied);
         return dto;
+    }
+
+    private String hashPassword(String password) {
+        if (password == null) return null;
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(password.getBytes());
+            StringBuilder hexString = new StringBuilder(2 * hash.length);
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) {
+                    hexString.append('0');
+                }
+                hexString.append(hex);
+            }
+            return hexString.toString();
+        } catch (NoSuchAlgorithmException e) {
+            throw new RuntimeException("Failed to hash password", e);
+        }
     }
 
     @Data
