@@ -1,0 +1,6 @@
+frontend/node_modules
+backend/build
+backend/.gradle
+**/.env*
+**/.DS_Store
+**/application-secret.yml
