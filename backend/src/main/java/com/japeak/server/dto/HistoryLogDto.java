@@ -9,8 +9,10 @@ public class HistoryLogDto {
     private Long quizId;
     private String type;
     private String question;
+    private String questionMeaning;
     private String answer;
     private String word;
+    private String reading;
     private String meaning;
     private String exampleSentence;
     private String exampleMeaning;

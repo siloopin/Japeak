@@ -3,7 +3,8 @@ import { Platform } from 'react-native';
 export type QuizDifficulty = 'Beginner' | 'N5' | 'N4' | 'N3' | 'N2' | 'N1';
 
 export interface KanjiWord {
-  word: string;
+  word?: string;
+  kanji?: string;
   reading: string;
   meaning: string;
   radical: string;
@@ -13,6 +14,7 @@ export interface GeneratedQuiz {
   id: number;
   type: 'word' | 'sentence';
   question: string;
+  question_meaning?: string;
   options: string[];
   answer: string;
   word: string;
@@ -24,20 +26,30 @@ export interface GeneratedQuiz {
   new_difficulty: QuizDifficulty;
 }
 
-const BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8080';
+import Constants from 'expo-constants';
+
+// 동적으로 현재 구동 중인 로컬 IP 주소를 가져와 백엔드 API URL로 설정합니다.
+const debuggerHost = Constants.expoConfig?.hostUri;
+const localIp = debuggerHost ? debuggerHost.split(':')[0] : 'localhost';
+const BASE_URL = process.env.EXPO_PUBLIC_API_URL || `http://${localIp}:8080`;
 
 export const generateNextQuiz = async (
   token: string | null,
   currentDifficulty: QuizDifficulty,
   wasCorrect: boolean | null,
-  consecutiveCorrect: number
+  consecutiveCorrect: number,
+  recentWords: string[] = []
 ): Promise<GeneratedQuiz | null> => {
+  if (!token) return null;
   try {
     let url = `${BASE_URL}/api/quiz/next?difficulty=${currentDifficulty}&consecutiveCorrect=${consecutiveCorrect}`;
     if (wasCorrect !== null) {
       url += `&wasCorrect=${wasCorrect}`;
     }
-
+    if (recentWords && recentWords.length > 0) {
+      url += `&recentWords=${encodeURIComponent(recentWords.join(','))}`;
+    }
+    
     const response = await fetch(url, {
       headers: {
         'Authorization': `Bearer ${token}`
@@ -46,7 +58,7 @@ export const generateNextQuiz = async (
     const jsonStr = await response.text();
     
     if (!response.ok) {
-      console.error("Backend returned an error:", response.status, jsonStr);
+      console.warn("Backend returned an error:", response.status, jsonStr);
       return null;
     }
 
@@ -109,8 +121,10 @@ export interface HistoryLogDto {
   quizId: number;
   type: string;
   question: string;
+  questionMeaning?: string;
   answer: string;
   word: string;
+  reading?: string;
   meaning: string;
   exampleSentence?: string;
   exampleMeaning?: string;

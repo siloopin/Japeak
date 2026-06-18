@@ -10,6 +10,7 @@ public class QuizDto {
     private Long id;
     private String type;
     private String question;
+    private String question_meaning;
     private List<String> options;
     private String answer;
     private String word;

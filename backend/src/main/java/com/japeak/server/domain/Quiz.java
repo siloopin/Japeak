@@ -36,6 +36,9 @@ public class Quiz {
     private String word;
     private String reading;
     private String meaning;
+
+    @Column(columnDefinition = "TEXT")
+    private String questionMeaning;
     
     @Column(columnDefinition = "TEXT")
     private String exampleSentence;

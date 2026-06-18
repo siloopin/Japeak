@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Alert, ActivityIndicator, ScrollView, Modal, TouchableWithoutFeedback } from 'react-native';
 import { BlurView } from 'expo-blur';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { generateNextQuiz, submitQuizAnswer, getReviewQuizzes, GeneratedQuiz, QuizDifficulty, KanjiWord } from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -33,14 +34,70 @@ export default function QuizScreen({ navigation, route }: Props) {
   
   const [selectedKanji, setSelectedKanji] = useState<KanjiWord | null>(null);
 
-  // 초기 퀴즈 로딩
+  const [recentWords, setRecentWords] = useState<string[]>([]);
+  const [showHint, setShowHint] = useState(false);
+
+  // 초기 퀴즈 로딩 및 세션 복구
   useEffect(() => {
-    if (mode === 'normal') {
-      loadNextQuiz(null);
-    } else {
-      loadReviewQuizzes();
-    }
+    const initQuiz = async () => {
+      if (mode === 'normal') {
+        try {
+          const savedSession = await AsyncStorage.getItem('@quiz_session');
+          if (savedSession) {
+            const parsed = JSON.parse(savedSession);
+            Alert.alert(
+              '이전 퀴즈 복구',
+              '이전에 풀던 일일 퀴즈가 있습니다. 이어서 진행하시겠습니까?',
+              [
+                {
+                  text: '처음부터',
+                  style: 'cancel',
+                  onPress: () => {
+                    AsyncStorage.removeItem('@quiz_session');
+                    loadNextQuiz(null, [], 0, 'N5');
+                  }
+                },
+                {
+                  text: '이어하기',
+                  onPress: () => {
+                    setQuestions(parsed.questions);
+                    setCurrentIndex(parsed.currentIndex);
+                    setConsecutiveCorrect(parsed.consecutiveCorrect);
+                    setCurrentDifficulty(parsed.currentDifficulty);
+                    setRecentWords(parsed.recentWords || []);
+                    // 다음 문제가 없는 경우 로드
+                    if (parsed.questions.length <= parsed.currentIndex) {
+                      loadNextQuiz(null, parsed.recentWords || [], parsed.consecutiveCorrect, parsed.currentDifficulty);
+                    }
+                  }
+                }
+              ]
+            );
+          } else {
+            loadNextQuiz(null, [], 0, currentDifficulty);
+          }
+        } catch (e) {
+          loadNextQuiz(null, [], 0, currentDifficulty);
+        }
+      } else {
+        loadReviewQuizzes();
+      }
+    };
+    initQuiz();
   }, []);
+
+  // 상태 변경 시마다 세션 저장
+  useEffect(() => {
+    if (mode === 'normal' && questions.length > 0 && currentIndex < totalQuestions) {
+      AsyncStorage.setItem('@quiz_session', JSON.stringify({
+        questions,
+        currentIndex,
+        consecutiveCorrect,
+        currentDifficulty,
+        recentWords
+      }));
+    }
+  }, [questions, currentIndex, consecutiveCorrect, currentDifficulty, recentWords]);
 
   const loadReviewQuizzes = async () => {
     setIsFetchingNext(true);
@@ -54,14 +111,28 @@ export default function QuizScreen({ navigation, route }: Props) {
     setIsFetchingNext(false);
   };
 
-  const loadNextQuiz = async (previousCorrect: boolean | null) => {
+  const loadNextQuiz = async (
+    previousCorrect: boolean | null, 
+    currentRecentWords: string[] = recentWords,
+    currentConsecutive: number = consecutiveCorrect,
+    difficulty: QuizDifficulty = currentDifficulty
+  ) => {
     if (mode !== 'normal') return;
     setIsFetchingNext(true);
-    const newQuiz = await generateNextQuiz(token, currentDifficulty, previousCorrect, consecutiveCorrect);
+    const newQuiz = await generateNextQuiz(token, difficulty, previousCorrect, currentConsecutive, currentRecentWords);
     
     if (newQuiz) {
       setQuestions(prev => [...prev, newQuiz]);
       setCurrentDifficulty(newQuiz.new_difficulty);
+      
+      // 단어 중복 방지를 위해 최근 단어 추가 (최대 10개 유지)
+      if (newQuiz.word) {
+        setRecentWords(prev => {
+          const updated = [...prev, newQuiz.word];
+          if (updated.length > 10) return updated.slice(updated.length - 10);
+          return updated;
+        });
+      }
     } else {
       Alert.alert('오류', '퀴즈를 가져오는데 실패했습니다.', [
         { text: '확인', onPress: () => navigation.goBack() }
@@ -70,36 +141,39 @@ export default function QuizScreen({ navigation, route }: Props) {
     setIsFetchingNext(false);
   };
 
-  const handleSelectOption = async (option: string) => {
+  const handleSelectOption = async (option: string | null) => {
     if (selectedOption !== null) return; 
 
     const currentQuiz = questions[currentIndex];
-    setSelectedOption(option);
     
-    const correct = option === currentQuiz.answer;
+    // 모르겠어요를 누른 경우 option은 null
+    const isSkip = option === null;
+    setSelectedOption(isSkip ? 'SKIP' : option);
+    
+    const correct = isSkip ? false : (option === currentQuiz.answer);
     setIsCorrect(correct);
 
     // 서버에 정답 여부 전송
     submitQuizAnswer(token, currentQuiz.id, correct);
 
-    if (correct) {
-      setConsecutiveCorrect(prev => prev + 1);
-    } else {
-      setConsecutiveCorrect(0);
-    }
+    const nextConsecutive = correct ? consecutiveCorrect + 1 : 0;
+    setConsecutiveCorrect(nextConsecutive);
 
     // 일반 모드일 때만 다음 문제를 미리 로딩
     if (mode === 'normal' && currentIndex < totalQuestions - 1) {
-      loadNextQuiz(correct);
+      loadNextQuiz(correct, recentWords, nextConsecutive, currentDifficulty);
     }
   };
-
-  const handleNext = () => {
+  const handleNext = async () => {
     if (currentIndex < totalQuestions - 1) {
       setCurrentIndex(prev => prev + 1);
       setSelectedOption(null);
       setIsCorrect(null);
+      setShowHint(false);
     } else {
+      if (mode === 'normal') {
+        await AsyncStorage.removeItem('@quiz_session');
+      }
       Alert.alert('학습 완료!', '모든 퀴즈를 완료했습니다! 고생하셨습니다 🎉', [
         { text: '홈으로', onPress: () => navigation.goBack() }
       ]);
@@ -123,7 +197,7 @@ export default function QuizScreen({ navigation, route }: Props) {
       return <Text style={textStyle}>{text}</Text>;
     }
 
-    const words = currentQuiz.kanji_words.map(k => k.word).filter(Boolean);
+    const words = currentQuiz.kanji_words.map(k => k.word || k.kanji).filter(Boolean);
     if (words.length === 0) return <Text style={textStyle}>{text}</Text>;
 
     const regex = new RegExp(`(${words.join('|')})`, 'g');
@@ -132,7 +206,7 @@ export default function QuizScreen({ navigation, route }: Props) {
     return (
       <Text style={textStyle}>
         {parts.map((part, index) => {
-          const kanjiMatch = currentQuiz.kanji_words.find(k => k.word === part);
+          const kanjiMatch = currentQuiz.kanji_words.find(k => (k.word || k.kanji) === part);
           if (kanjiMatch) {
             return (
               <Text 
@@ -180,6 +254,19 @@ export default function QuizScreen({ navigation, route }: Props) {
         )}
       </View>
 
+      {/* 힌트 영역 */}
+      {currentQuiz.question_meaning && !selectedOption && (
+        <View style={styles.hintContainer}>
+          {!showHint ? (
+            <TouchableOpacity onPress={() => setShowHint(true)} style={styles.hintButton}>
+              <Text style={styles.hintButtonText}>💡 힌트 보기</Text>
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.hintText}>{currentQuiz.question_meaning}</Text>
+          )}
+        </View>
+      )}
+
       <ScrollView contentContainerStyle={styles.optionsContainer} showsVerticalScrollIndicator={false}>
         {currentQuiz.options.map((option) => {
           let btnStyle = [styles.optionButton];
@@ -209,6 +296,15 @@ export default function QuizScreen({ navigation, route }: Props) {
             </TouchableOpacity>
           );
         })}
+        {/* 모르겠어요 버튼 */}
+        <TouchableOpacity
+          style={[styles.optionButton, styles.skipButton, selectedOption !== null && styles.optionDisabled]}
+          activeOpacity={0.7}
+          onPress={() => handleSelectOption(null)}
+          disabled={selectedOption !== null}
+        >
+          <Text style={[styles.optionText, styles.skipText]}>모르겠어요 (넘기기)</Text>
+        </TouchableOpacity>
       </ScrollView>
 
       {/* Feedback & Next Button */}
@@ -216,9 +312,10 @@ export default function QuizScreen({ navigation, route }: Props) {
         <View style={[styles.feedbackContainer, isCorrect ? styles.feedbackCorrectBg : styles.feedbackIncorrectBg]}>
           <View style={{ marginBottom: 15 }}>
             <Text style={[styles.feedbackTitle, isCorrect ? styles.feedbackCorrectText : styles.feedbackIncorrectText]}>
-              {isCorrect ? '정답입니다! 🎉' : '틀렸습니다 😢'}
+              {selectedOption === 'SKIP' ? '정답을 확인하세요!' : (isCorrect ? '정답입니다! 🎉' : '아쉽네요! 💦')}
             </Text>
             
+
             {/* 정답/오답 상세 정보 및 예문 */}
             <View style={styles.exampleContainer}>
               <Text style={styles.wordInfo}>
@@ -260,7 +357,7 @@ export default function QuizScreen({ navigation, route }: Props) {
             <TouchableWithoutFeedback>
               <View style={styles.modalContent}>
                 <View style={styles.modalHeader}>
-                  <Text style={styles.modalWord}>{selectedKanji?.word}</Text>
+                  <Text style={styles.modalWord}>{selectedKanji?.word || selectedKanji?.kanji}</Text>
                   <Text style={styles.modalReading}>{selectedKanji?.reading}</Text>
                 </View>
                 <Text style={styles.modalMeaning}>{selectedKanji?.meaning}</Text>
@@ -358,6 +455,28 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     textAlign: 'center',
   },
+  hintContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  hintButton: {
+    backgroundColor: '#F3F4F6',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+  },
+  hintButtonText: {
+    color: '#4B5563',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  hintText: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    paddingHorizontal: 20,
+    fontStyle: 'italic',
+  },
   optionsContainer: {
     paddingHorizontal: 20,
     paddingBottom: 200, // 하단 피드백 영역 공간 확보
@@ -397,6 +516,15 @@ const styles = StyleSheet.create({
   },
   optionDisabled: {
     opacity: 0.5,
+  },
+  skipButton: {
+    backgroundColor: '#F3F4F6',
+    borderColor: '#D1D5DB',
+    marginTop: 8,
+  },
+  skipText: {
+    color: '#6B7280',
+    fontSize: 15,
   },
   feedbackContainer: {
     position: 'absolute',

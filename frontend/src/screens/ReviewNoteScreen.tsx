@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, ActivityIndicator, SectionList, Switch } from 'react-native';
 import { fetchQuizHistory, HistoryLogDto } from '../utils/api';
 import { useAuthStore } from '../store/authStore';
+import { useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -30,9 +31,11 @@ export default function ReviewNoteScreen({ navigation }: Props) {
   const [historyLogs, setHistoryLogs] = useState<HistoryLogDto[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    loadHistory();
-  }, [year, month]);
+  useFocusEffect(
+    useCallback(() => {
+      loadHistory();
+    }, [year, month])
+  );
 
   const loadHistory = async () => {
     setIsLoading(true);

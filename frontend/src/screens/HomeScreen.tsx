@@ -89,7 +89,8 @@ export default function HomeScreen({ navigation }: Props) {
             </TouchableOpacity>
 
             {/* Review Section */}
-            <BlurView intensity={80} tint="light" style={[styles.glassCard, { marginTop: 10 }]}>
+            <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.navigate('ReviewNote')}>
+              <BlurView intensity={80} tint="light" style={[styles.glassCard, { marginTop: 10 }]}>
               <View style={styles.cardHeader}>
                 <Text style={styles.cardTitle}>복습 노트</Text>
                 <View style={styles.iconTag}>
@@ -122,8 +123,8 @@ export default function HomeScreen({ navigation }: Props) {
                   <Text style={[styles.reviewButtonText, { color: '#4B5563' }]}>📅 오늘 푼 문제 복습하기</Text>
                 </TouchableOpacity>
               </View>
-            </BlurView>
-
+              </BlurView>
+            </TouchableOpacity>
           </View>
         </ScrollView>
       </SafeAreaView>

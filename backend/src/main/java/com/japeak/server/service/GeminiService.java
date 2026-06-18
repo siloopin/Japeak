@@ -11,17 +11,17 @@ public class GeminiService {
 
     private final WebClient webClient;
 
-    @Value("${gemini.api.key}")
+    @Value("${gemini.api.key:}")
     private String apiKey;
 
-    @Value("${gemini.api.url}")
+    @Value("${gemini.api.url:}")
     private String apiUrl;
 
     public GeminiService() {
         this.webClient = WebClient.builder().build();
     }
 
-    public String generateQuiz(String currentDifficulty, Boolean wasCorrect, int consecutiveCorrect) {
+    public String generateQuiz(String currentDifficulty, Boolean wasCorrect, int consecutiveCorrect, String recentWords) {
         String prompt = String.format("""
             You are an expert Japanese language instructor. 
             Generate a Japanese vocabulary or sentence fill-in-the-blank quiz question.
@@ -33,12 +33,14 @@ public class GeminiService {
             Instructions:
             0. Note on Difficulty: If the difficulty is 'Beginner', provide VERY basic beginner Japanese (e.g. Hiragana/Katakana level words, simple greetings like 'こんにちは', or very basic nouns like '水', '猫'). Otherwise, follow JLPT standards (N5, N4, etc.).
             1. If the user answered correctly consecutively, you may slightly increase the difficulty (e.g. Beginner -> N5, or N5 -> N4) in the 'new_difficulty' field. If they answered incorrectly, decrease or maintain it.
-            2. The quiz 'type' should randomly be either 'word' (guessing meaning of a Japanese word) or 'sentence' (fill in the blank with appropriate Japanese word). For 'Beginner', prefer 'word' type.
-            3. For 'word' type: 'question' is the Japanese word (e.g. "食べる"). 'options' are 4 Korean meanings. 'answer' is the correct Korean meaning.
+            2. DO NOT USE ANY OF THE FOLLOWING RECENT WORDS: [%s]
+            3. The quiz 'type' should randomly be either 'word' (guessing meaning of a Japanese word) or 'sentence' (fill in the blank with appropriate Japanese word). For 'Beginner', prefer 'word' type.
+            4. For 'word' type: 'question' is the Japanese word (e.g. "食べる"). 'options' are 4 Korean meanings. 'answer' is the correct Korean meaning.
             4. For 'sentence' type: 'question' is a Japanese sentence with a blank "___" (e.g. "明日、映画を___つもりです。"). 'options' are 4 Japanese words. 'answer' is the correct Japanese word.
             5. Provide an 'example_sentence' in Japanese using the target word, and 'example_meaning' in Korean.
-            6. In 'kanji_words', provide an array of objects for EVERY Japanese word containing Kanji that appears in the 'example_sentence'. For each word, provide the word itself, its hiragana 'reading', its korean 'meaning', and the 'radical' of the kanjis used (e.g. "週: 辶(책받침), 末: 木(나무목)"). If no Kanji exists, return an empty array.
-            7. Return ONLY a valid raw JSON object matching the exact structure requested, without any markdown formatting.
+            6. In 'question_meaning', provide the KOREAN translation of the 'question'. If type is 'sentence', translate the whole sentence but replace the answer part with '___'.
+            7. In 'kanji_words', provide an array of objects for EVERY Japanese word containing Kanji that appears ANYWHERE in the quiz (especially the 'question', 'word', and 'example_sentence'). For each word, provide the word itself, its hiragana 'reading', its korean 'meaning', and the 'radical' of the kanjis used (e.g. "週: 辶(책받침), 末: 木(나무목)"). If no Kanji exists, return an empty array.
+            8. Return ONLY a valid raw JSON object matching the exact structure requested, without any markdown formatting.
             
             JSON format:
             {
@@ -46,7 +48,9 @@ public class GeminiService {
               "question": "string",
               "options": ["string", "string", "string", "string"],
               "answer": "string",
+              "question_meaning": "korean translation of the question (with ___ if sentence type)",
               "word": "target japanese word",
+              "reading": "hiragana reading of the target word",
               "meaning": "korean meaning of the target word",
               "example_sentence": "example sentence using the word",
               "example_meaning": "korean translation of the example sentence",
@@ -60,7 +64,7 @@ public class GeminiService {
               ],
               "new_difficulty": "Beginner" | "N5" | "N4" | "N3" | "N2" | "N1"
             }
-            """, currentDifficulty, wasCorrect == null ? "N/A" : wasCorrect.toString(), consecutiveCorrect);
+            """, currentDifficulty, wasCorrect == null ? "N/A" : wasCorrect.toString(), consecutiveCorrect, recentWords);
 
         Map<String, Object> requestBody = Map.of(
             "contents", List.of(

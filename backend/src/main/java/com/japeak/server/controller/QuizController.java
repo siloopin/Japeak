@@ -51,83 +51,105 @@ public class QuizController {
     }
 
     @GetMapping("/next")
-    public ResponseEntity<QuizDto> getNextQuiz(
-            @RequestHeader("Authorization") String authHeader,
-            @RequestParam(defaultValue = "N5") String difficulty,
-            @RequestParam(required = false) Boolean wasCorrect,
-            @RequestParam(defaultValue = "0") int consecutiveCorrect) {
+    public ResponseEntity<QuizDto> getNextQuiz(@RequestHeader("Authorization") String authHeader,
+                                               @RequestParam(required = false, defaultValue = "N5") String difficulty,
+                                               @RequestParam(required = false) Boolean wasCorrect,
+                                               @RequestParam(required = false, defaultValue = "0") int consecutiveCorrect,
+                                               @RequestParam(required = false, defaultValue = "") String recentWords) {
         
         User user = getAuthenticatedUser(authHeader);
 
-        // 1. 30% chance to fetch an incorrect quiz for review
+        // 1. 30% 확률로 오답 복습 문제 출제 (DB에서 가져옴, AI 사용 안 함)
         if (Math.random() < 0.3) {
             Optional<Quiz> incorrectQuizOpt = quizRepository.findRandomIncorrectQuizForUser(user.getId());
             if (incorrectQuizOpt.isPresent()) {
+                System.out.println("[Quiz] 오답 복습 문제 출제 (DB)");
                 return ResponseEntity.ok(convertToDto(incorrectQuizOpt.get(), difficulty));
             }
         }
 
-        // 2. 50% chance to fetch a random new quiz from DB (never answered by this user)
+        // 2. DB에 이미 저장된 정상 퀴즈가 있으면 50% 확률로 재활용 (AI 사용 안 함)
         if (Math.random() < 0.5) {
             Optional<Quiz> randomQuizOpt = quizRepository.findRandomQuizForUser(difficulty, user.getId());
             if (randomQuizOpt.isPresent()) {
+                System.out.println("[Quiz] DB 저장 문제 재활용");
                 return ResponseEntity.ok(convertToDto(randomQuizOpt.get(), difficulty));
             }
         }
 
-        // 3. Hybrid Generation (Method C & Method A)
-        String quizJsonString;
-        boolean isSimple = Math.random() < 0.5; // 50% chance for simple word quiz
-
-        if (isSimple) {
-            // Method C: Simple tasks to Groq
-            try {
-                quizJsonString = groqService.generateQuiz(difficulty, wasCorrect, consecutiveCorrect, true);
-            } catch (Exception e) {
-                // If Groq fails, fallback to Gemini
-                quizJsonString = geminiService.generateQuiz(difficulty, wasCorrect, consecutiveCorrect);
-            }
-        } else {
-            // Method C: Complex tasks to Gemini
-            try {
-                quizJsonString = geminiService.generateQuiz(difficulty, wasCorrect, consecutiveCorrect);
-            } catch (Exception e) {
-                System.out.println("Gemini failed, falling back to Groq: " + e.getMessage());
-                // Method A: Fallback to Groq for complex tasks
-                quizJsonString = groqService.generateQuiz(difficulty, wasCorrect, consecutiveCorrect, false);
-            }
-        }
+        // 3. Groq AI로 새로운 퀴즈 생성 (최대 2회 재시도)
+        boolean isSimple = Math.random() < 0.5; // 50% 단어형, 50% 복합형
         
-        // Clean up possible Markdown formatting from AI
-        if (quizJsonString != null) {
-            quizJsonString = quizJsonString.replaceAll("```json\\s*", "").replaceAll("```\\s*", "").trim();
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                System.out.println("[Quiz] Groq AI 퀴즈 생성 시도 " + attempt + "회차 (isSimple=" + isSimple + ")");
+                String quizJsonString = groqService.generateQuiz(difficulty, wasCorrect, consecutiveCorrect, isSimple, recentWords);
+
+                // 마크다운 코드블록 제거
+                if (quizJsonString != null) {
+                    quizJsonString = quizJsonString.replaceAll("```json\\s*", "").replaceAll("```\\s*", "").trim();
+                }
+
+                QuizDto dto = objectMapper.readValue(quizJsonString, QuizDto.class);
+
+                // 유효성 검증: question, answer, options가 정상인지 확인
+                if (dto.getQuestion() == null || dto.getQuestion().trim().isEmpty()) {
+                    throw new RuntimeException("question이 비어 있음");
+                }
+                if (dto.getAnswer() == null || dto.getAnswer().trim().isEmpty()) {
+                    throw new RuntimeException("answer가 비어 있음");
+                }
+                if (dto.getOptions() == null || dto.getOptions().size() != 4) {
+                    throw new RuntimeException("options가 4개가 아님");
+                }
+                // 선지가 전부 한자만으로 이루어져 있으면 비정상 (한국어 또는 히라가나가 포함되어야 함)
+                if (dto.getType() != null && dto.getType().equals("word")) {
+                    boolean allOptionsLookBroken = dto.getOptions().stream().allMatch(opt -> 
+                        opt != null && opt.matches("^[\\u4E00-\\u9FFF]+$") // 순수 한자만으로 구성
+                    );
+                    if (allOptionsLookBroken) {
+                        throw new RuntimeException("선지가 전부 한자만으로 구성됨 (한국어 선지가 아님): " + dto.getOptions());
+                    }
+                }
+
+                System.out.println("[Quiz] Groq AI 퀴즈 생성 성공! question=" + dto.getQuestion() + ", answer=" + dto.getAnswer());
+
+                // DB에 저장
+                Quiz quiz = new Quiz();
+                quiz.setDifficulty(difficulty);
+                quiz.setType(dto.getType());
+                quiz.setQuestion(dto.getQuestion());
+                quiz.setQuestionMeaning(dto.getQuestion_meaning());
+                quiz.setAnswer(dto.getAnswer());
+                quiz.setOptionsJson(objectMapper.writeValueAsString(dto.getOptions()));
+                quiz.setWord(dto.getWord());
+                quiz.setReading(dto.getReading());
+                quiz.setMeaning(dto.getMeaning());
+                quiz.setExampleSentence(dto.getExample_sentence());
+                quiz.setExampleMeaning(dto.getExample_meaning());
+                quiz.setKanjiWordsJson(objectMapper.writeValueAsString(dto.getKanji_words()));
+
+                quizRepository.save(quiz);
+                dto.setId(quiz.getId());
+
+                return ResponseEntity.ok(dto);
+
+            } catch (Exception e) {
+                System.err.println("[Quiz] Groq AI 퀴즈 생성 실패 (시도 " + attempt + "): " + e.getMessage());
+                if (attempt == 2) {
+                    // 2회 모두 실패 시 DB 폴백
+                    System.out.println("[Quiz] 2회 연속 실패, DB 폴백 시도");
+                    Optional<Quiz> fallbackQuiz = quizRepository.findRandomQuizForUser(difficulty, user.getId());
+                    if (fallbackQuiz.isPresent()) {
+                        return ResponseEntity.ok(convertToDto(fallbackQuiz.get(), difficulty));
+                    } else {
+                        throw new RuntimeException("AI 퀴즈 생성 실패 및 DB에 폴백 퀴즈 없음", e);
+                    }
+                }
+            }
         }
 
-        try {
-            QuizDto dto = objectMapper.readValue(quizJsonString, QuizDto.class);
-            
-            // Save to DB
-            Quiz quiz = new Quiz();
-            quiz.setDifficulty(difficulty);
-            quiz.setType(dto.getType());
-            quiz.setQuestion(dto.getQuestion());
-            quiz.setAnswer(dto.getAnswer());
-            quiz.setOptionsJson(objectMapper.writeValueAsString(dto.getOptions()));
-            quiz.setWord(dto.getWord());
-            quiz.setReading(dto.getReading());
-            quiz.setMeaning(dto.getMeaning());
-            quiz.setExampleSentence(dto.getExample_sentence());
-            quiz.setExampleMeaning(dto.getExample_meaning());
-            quiz.setKanjiWordsJson(objectMapper.writeValueAsString(dto.getKanji_words()));
-            
-            quizRepository.save(quiz);
-            dto.setId(quiz.getId());
-            
-            return ResponseEntity.ok(dto);
-        } catch (JsonProcessingException e) {
-            e.printStackTrace();
-            throw new RuntimeException("Failed to process Gemini JSON", e);
-        }
+        throw new RuntimeException("Unexpected: quiz generation loop exited without returning");
     }
 
     @PostMapping("/answer")
@@ -180,6 +202,7 @@ public class QuizController {
             dto.setQuizId(log.getQuiz().getId());
             dto.setType(log.getQuiz().getType());
             dto.setQuestion(log.getQuiz().getQuestion());
+            dto.setQuestionMeaning(log.getQuiz().getQuestionMeaning());
             dto.setAnswer(log.getQuiz().getAnswer());
             dto.setWord(log.getQuiz().getWord());
             dto.setReading(log.getQuiz().getReading());
@@ -200,6 +223,7 @@ public class QuizController {
         dto.setId(quiz.getId());
         dto.setType(quiz.getType());
         dto.setQuestion(quiz.getQuestion());
+        dto.setQuestion_meaning(quiz.getQuestionMeaning());
         dto.setAnswer(quiz.getAnswer());
         dto.setWord(quiz.getWord());
         dto.setReading(quiz.getReading());
