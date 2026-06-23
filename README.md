@@ -2,7 +2,9 @@
 
 <div align="center">
 
-![Japeak Banner](./assets/main_readme.png)
+<img src="./assets/screenshot_splash.png" alt="스플래시" width="200"/>　<img src="./assets/screenshot_login.png" alt="로그인" width="200"/>　<img src="./assets/screenshot_home.png" alt="홈" width="200"/>
+
+<img src="./assets/japeak_mockup_review.png" alt="복습 노트" width="400"/>
 
 **JLPT N1~N5 대응 · AI 맞춤형 퀴즈 · 한자 사전 · 단어장 · 오답 노트**
 

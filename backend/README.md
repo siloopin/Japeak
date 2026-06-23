@@ -1,5 +1,11 @@
 # Japeak — Backend (Spring Boot) 📡
 
+<div align="center">
+<img src="../assets/japeak_mockup_review.png" alt="복습 노트 목업" width="350"/>
+</div>
+
+<br/>
+
 Spring Boot 기반의 REST API 서버입니다. Groq LLM을 활용한 퀴즈 생성, JWT 인증, JLPT 단어 관리, 한자 사전 조회 기능을 제공합니다.
 
 ---

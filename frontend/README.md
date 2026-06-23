@@ -1,5 +1,11 @@
 # Japeak — Frontend (React Native / Expo) 📱
 
+<div align="center">
+<img src="../assets/screenshot_splash.png" alt="스플래시" width="180"/>　<img src="../assets/screenshot_login.png" alt="로그인" width="180"/>　<img src="../assets/screenshot_home.png" alt="홈" width="180"/>
+</div>
+
+<br/>
+
 Expo SDK 51 기반의 iOS/Android 크로스 플랫폼 일본어 학습 앱입니다. TypeScript로 작성되었으며 Zustand 전역 상태 관리, 글래스모피즘 UI, 한자 터치 사전, TTS 발음 기능을 포함합니다.
 
 ---
