@@ -1,9 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Alert, ActivityIndicator, ScrollView, Modal, TouchableWithoutFeedback } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, Alert, ActivityIndicator, ScrollView, Animated, Easing } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { Ionicons } from '@expo/vector-icons';
+import * as Speech from 'expo-speech';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { generateNextQuiz, submitQuizAnswer, getReviewQuizzes, GeneratedQuiz, QuizDifficulty, KanjiWord } from '../utils/api';
+import { generateNextQuiz, submitQuizAnswer, getReviewQuizzes, GeneratedQuiz, QuizDifficulty } from '../utils/api';
 import { useAuthStore } from '../store/authStore';
+import KanjiWord from '../components/KanjiWord';
+import KanjiBottomSheet from '../components/KanjiBottomSheet';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '../../App';
@@ -32,10 +36,16 @@ export default function QuizScreen({ navigation, route }: Props) {
   const [isSavingNotion, setIsSavingNotion] = useState(false);
   const [isFetchingNext, setIsFetchingNext] = useState(false);
   
-  const [selectedKanji, setSelectedKanji] = useState<KanjiWord | null>(null);
+  const [selectedKanji, setSelectedKanji] = useState<string | null>(null);
 
   const [recentWords, setRecentWords] = useState<string[]>([]);
   const [showHint, setShowHint] = useState(false);
+  // 결과 화면
+  const [showResult, setShowResult] = useState(false);
+  const [correctCount, setCorrectCount] = useState(0);
+  // 원그래프 애니메이션 값
+  const pieAnim = useRef(new Animated.Value(0)).current;
+  const scoreAnim = useRef(new Animated.Value(0)).current;
 
   // 초기 퀴즈 로딩 및 세션 복구
   useEffect(() => {
@@ -125,12 +135,11 @@ export default function QuizScreen({ navigation, route }: Props) {
       setQuestions(prev => [...prev, newQuiz]);
       setCurrentDifficulty(newQuiz.new_difficulty);
       
-      // 단어 중복 방지를 위해 최근 단어 추가 (최대 10개 유지)
+      // 이번 세션에서 출제된 단어는 모두 기억 (세션 내 중복 완전 방지)
       if (newQuiz.word) {
         setRecentWords(prev => {
-          const updated = [...prev, newQuiz.word];
-          if (updated.length > 10) return updated.slice(updated.length - 10);
-          return updated;
+          if (prev.includes(newQuiz.word)) return prev;
+          return [...prev, newQuiz.word];
         });
       }
     } else {
@@ -152,8 +161,8 @@ export default function QuizScreen({ navigation, route }: Props) {
     
     const correct = isSkip ? false : (option === currentQuiz.answer);
     setIsCorrect(correct);
-
-    // 서버에 정답 여부 전송
+    // 정답 누적 집계
+    if (correct) setCorrectCount(prev => prev + 1);
     submitQuizAnswer(token, currentQuiz.id, correct);
 
     const nextConsecutive = correct ? consecutiveCorrect + 1 : 0;
@@ -171,16 +180,33 @@ export default function QuizScreen({ navigation, route }: Props) {
       setIsCorrect(null);
       setShowHint(false);
     } else {
+      // 마지막 문제 → 결과 화면
       if (mode === 'normal') {
         await AsyncStorage.removeItem('@quiz_session');
       }
-      Alert.alert('학습 완료!', '모든 퀴즈를 완료했습니다! 고생하셨습니다 🎉', [
-        { text: '홈으로', onPress: () => navigation.goBack() }
-      ]);
+      // 마지막 문제 정답 여부 포함한 최종 집계
+      const finalCorrect = correctCount + (isCorrect ? 1 : 0);
+      setCorrectCount(finalCorrect);
+      setShowResult(true);
+      // 원그래프 + 점수 숫자 애니메이션 시작
+      Animated.parallel([
+        Animated.timing(pieAnim, {
+          toValue: finalCorrect / totalQuestions,
+          duration: 1200,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+        Animated.timing(scoreAnim, {
+          toValue: finalCorrect,
+          duration: 1200,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: false,
+        }),
+      ]).start();
     }
   };
 
-  if (questions.length === 0 || currentIndex >= questions.length) {
+  if (questions.length === 0 || (!showResult && currentIndex >= questions.length)) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#3B82F6" />
@@ -189,40 +215,97 @@ export default function QuizScreen({ navigation, route }: Props) {
     );
   }
 
-  const currentQuiz = questions[currentIndex];
-  const progress = ((currentIndex) / totalQuestions) * 100;
+  // ─── 결과 화면 ───
+  if (showResult) {
+    const ratio = correctCount / totalQuestions;
+    const percentage = Math.round(ratio * 100);
+    const SIZE = 220;
+    const STROKE = 22;
+    const R = (SIZE - STROKE) / 2;
+    const CIRCUMFERENCE = 2 * Math.PI * R;
 
-  const renderWithKanjiHighlight = (text: string, textStyle: any, highlightStyle: any = styles.kanjiHighlight) => {
-    if (!text || !currentQuiz.kanji_words || currentQuiz.kanji_words.length === 0) {
-      return <Text style={textStyle}>{text}</Text>;
-    }
-
-    const words = currentQuiz.kanji_words.map(k => k.word || k.kanji).filter(Boolean);
-    if (words.length === 0) return <Text style={textStyle}>{text}</Text>;
-
-    const regex = new RegExp(`(${words.join('|')})`, 'g');
-    const parts = text.split(regex);
+    let grade = ''; let gradeColor = '';
+    if (percentage >= 90) { grade = '🏆 완벽해요!'; gradeColor = '#F59E0B'; }
+    else if (percentage >= 70) { grade = '👍 잘했어요!'; gradeColor = '#10B981'; }
+    else if (percentage >= 50) { grade = '💪 조금만 더!'; gradeColor = '#3B82F6'; }
+    else { grade = '📚 복습이 필요해요'; gradeColor = '#EF4444'; }
 
     return (
-      <Text style={textStyle}>
-        {parts.map((part, index) => {
-          const kanjiMatch = currentQuiz.kanji_words.find(k => (k.word || k.kanji) === part);
-          if (kanjiMatch) {
-            return (
-              <Text 
-                key={index} 
-                style={[highlightStyle, { fontSize: textStyle?.fontSize || 16 }]} 
-                onPress={() => setSelectedKanji(kanjiMatch)}
-              >
-                {part}
-              </Text>
-            );
-          }
-          return <Text key={index}>{part}</Text>;
-        })}
-      </Text>
+      <SafeAreaView style={styles.container}>
+        <View style={styles.resultContainer}>
+          {/* 제목 */}
+          <Text style={styles.resultTitle}>퀴즈 완료! 🎉</Text>
+          <Text style={styles.resultSubtitle}>{totalQuestions}문제 중 결과</Text>
+
+          {/* 원그래프 (SVG 없이 Animated + border 트릭) */}
+          <View style={styles.pieWrapper}>
+            {/* 배경 원 */}
+            <View style={[styles.pieBase, { width: SIZE, height: SIZE, borderRadius: SIZE / 2, borderWidth: STROKE, borderColor: '#E5E7EB' }]} />
+            {/* 정답 호 - clip 트릭 */}
+            {Array.from({ length: 360 }).map((_, deg) => {
+              const segRatio = deg / 360;
+              return (
+                <Animated.View
+                  key={deg}
+                  style={[
+                    styles.pieSeg,
+                    {
+                      width: SIZE,
+                      height: SIZE,
+                      borderRadius: SIZE / 2,
+                      transform: [{ rotate: `${deg}deg` }],
+                      opacity: pieAnim.interpolate({
+                        inputRange: [Math.max(0, segRatio - 0.001), Math.min(1, segRatio + 0.001)],
+                        outputRange: segRatio === 0 ? [1, 1] : [0, 1],
+                        extrapolate: 'clamp',
+                      }),
+                    },
+                  ]}
+                />
+              );
+            })}
+            {/* 중앙 숫자 */}
+            <View style={styles.pieCenter}>
+              <Animated.Text style={[styles.piePercent, { color: gradeColor }]}>
+                {scoreAnim.interpolate({
+                  inputRange: [0, totalQuestions],
+                  outputRange: ['0%', `${percentage}%`],
+                })}
+              </Animated.Text>
+              <Text style={styles.pieLabel}>{correctCount}/{totalQuestions}</Text>
+            </View>
+          </View>
+
+          {/* 등급 */}
+          <Text style={[styles.gradeText, { color: gradeColor }]}>{grade}</Text>
+
+          {/* 상세 통계 */}
+          <View style={styles.statsRow}>
+            <View style={[styles.statCard, { backgroundColor: '#DCFCE7' }]}>
+              <Text style={styles.statNum}>{correctCount}</Text>
+              <Text style={styles.statLabel}>정답</Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: '#FEE2E2' }]}>
+              <Text style={styles.statNum}>{totalQuestions - correctCount}</Text>
+              <Text style={styles.statLabel}>오답</Text>
+            </View>
+            <View style={[styles.statCard, { backgroundColor: '#DBEAFE' }]}>
+              <Text style={styles.statNum}>{percentage}%</Text>
+              <Text style={styles.statLabel}>정확도</Text>
+            </View>
+          </View>
+
+          {/* 버튼 */}
+          <TouchableOpacity style={styles.resultBtn} onPress={() => navigation.goBack()}>
+            <Text style={styles.resultBtnText}>홈으로 돌아가기</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
     );
-  };
+  }
+
+  const currentQuiz = questions[currentIndex];
+  const progress = ((currentIndex) / totalQuestions) * 100;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -247,22 +330,24 @@ export default function QuizScreen({ navigation, route }: Props) {
         <Text style={styles.questionType}>
           {currentQuiz.type === 'word' ? '다음 단어의 뜻은?' : '다음 문장의 빈칸에 들어갈 말은?'}
         </Text>
-        {currentQuiz.type === 'word' ? (
-          renderWithKanjiHighlight(currentQuiz.word || currentQuiz.question, [styles.questionText, { fontSize: 42, marginTop: 10 }], [styles.kanjiHighlight, { color: '#2563EB' }])
-        ) : (
-          renderWithKanjiHighlight(currentQuiz.question, styles.questionText, [styles.kanjiHighlight, { color: '#2563EB' }])
-        )}
+        <KanjiWord 
+          text={currentQuiz.type === 'word' ? (currentQuiz.word || currentQuiz.question) : currentQuiz.question} 
+          style={currentQuiz.type === 'word' ? [styles.questionText, { fontSize: 42, marginTop: 10 }] : styles.questionText} 
+          onKanjiPress={setSelectedKanji} 
+        />
       </View>
 
       {/* 힌트 영역 */}
-      {currentQuiz.question_meaning && !selectedOption && (
+      {!selectedOption && (
         <View style={styles.hintContainer}>
           {!showHint ? (
             <TouchableOpacity onPress={() => setShowHint(true)} style={styles.hintButton}>
               <Text style={styles.hintButtonText}>💡 힌트 보기</Text>
             </TouchableOpacity>
           ) : (
-            <Text style={styles.hintText}>{currentQuiz.question_meaning}</Text>
+            <Text style={styles.hintText}>
+              {currentQuiz.type === 'word' ? currentQuiz.reading : currentQuiz.question_meaning}
+            </Text>
           )}
         </View>
       )}
@@ -274,13 +359,13 @@ export default function QuizScreen({ navigation, route }: Props) {
 
           if (selectedOption) {
             if (option === currentQuiz.answer) {
-              btnStyle.push(styles.optionCorrect);
-              textStyle.push(styles.textCorrect);
+              (btnStyle as any[]).push(styles.optionCorrect);
+              (textStyle as any[]).push(styles.textCorrect);
             } else if (option === selectedOption) {
-              btnStyle.push(styles.optionIncorrect);
-              textStyle.push(styles.textIncorrect);
+              (btnStyle as any[]).push(styles.optionIncorrect);
+              (textStyle as any[]).push(styles.textIncorrect);
             } else {
-              btnStyle.push(styles.optionDisabled);
+              (btnStyle as any[]).push(styles.optionDisabled);
             }
           }
 
@@ -315,17 +400,20 @@ export default function QuizScreen({ navigation, route }: Props) {
               {selectedOption === 'SKIP' ? '정답을 확인하세요!' : (isCorrect ? '정답입니다! 🎉' : '아쉽네요! 💦')}
             </Text>
             
-
-            {/* 정답/오답 상세 정보 및 예문 */}
             <View style={styles.exampleContainer}>
-              <Text style={styles.wordInfo}>
-                <Text style={{ fontWeight: 'bold' }}>{renderWithKanjiHighlight(currentQuiz.word, null, [styles.kanjiHighlight, { color: '#059669' }])}</Text>
-                {currentQuiz.reading ? ` (${currentQuiz.reading})` : ''} : {currentQuiz.meaning}
-              </Text>
+              <View style={styles.wordInfoRow}>
+                <KanjiWord text={currentQuiz.word || ""} style={{ color: '#059669', fontSize: 18, fontWeight: 'bold' }} onKanjiPress={setSelectedKanji} />
+                <Text style={styles.wordInfoText}>
+                  {currentQuiz.reading ? ` (${currentQuiz.reading})` : ''} : {currentQuiz.meaning}
+                </Text>
+                <TouchableOpacity onPress={() => Speech.speak(currentQuiz.word || currentQuiz.reading || '', { language: 'ja-JP' })} style={styles.speakerButtonSmall}>
+                  <Ionicons name="volume-medium" size={20} color="#3B82F6" />
+                </TouchableOpacity>
+              </View>
               {isCorrect && currentQuiz.example_sentence && (
                 <View style={styles.exampleBox}>
                   <Text style={styles.exampleTitle}>💡 활용 예문</Text>
-                  {renderWithKanjiHighlight(currentQuiz.example_sentence, styles.exampleJp)}
+                  <KanjiWord text={currentQuiz.example_sentence} style={styles.exampleJp} onKanjiPress={setSelectedKanji} />
                   <Text style={styles.exampleKo}>{currentQuiz.example_meaning}</Text>
                 </View>
               )}
@@ -345,39 +433,13 @@ export default function QuizScreen({ navigation, route }: Props) {
         </View>
       </View>
       )}
+
       {/* 한자 상세 정보 모달 */}
-      <Modal
+      <KanjiBottomSheet 
         visible={!!selectedKanji}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setSelectedKanji(null)}
-      >
-        <BlurView intensity={30} tint="dark" style={styles.modalOverlay}>
-          <TouchableOpacity style={{flex: 1, width: '100%', justifyContent: 'flex-end'}} activeOpacity={1} onPress={() => setSelectedKanji(null)}>
-            <TouchableWithoutFeedback>
-              <View style={styles.modalContent}>
-                <View style={styles.modalHeader}>
-                  <Text style={styles.modalWord}>{selectedKanji?.word || selectedKanji?.kanji}</Text>
-                  <Text style={styles.modalReading}>{selectedKanji?.reading}</Text>
-                </View>
-                <Text style={styles.modalMeaning}>{selectedKanji?.meaning}</Text>
-                
-                {selectedKanji?.radical && (
-                  <View style={styles.radicalBox}>
-                    <Text style={styles.radicalLabel}>부수 정보</Text>
-                    <Text style={styles.radicalText}>{selectedKanji.radical}</Text>
-                  </View>
-                )}
-
-                <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setSelectedKanji(null)}>
-                  <Text style={styles.modalCloseText}>닫기</Text>
-                </TouchableOpacity>
-              </View>
-            </TouchableWithoutFeedback>
-          </TouchableOpacity>
-        </BlurView>
-      </Modal>
-
+        character={selectedKanji || ''}
+        onClose={() => setSelectedKanji(null)}
+      />
     </SafeAreaView>
   );
 }
@@ -565,11 +627,21 @@ const styles = StyleSheet.create({
   exampleContainer: {
     marginTop: 8,
   },
-  wordInfo: {
+  wordInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginBottom: 10,
+  },
+  wordInfoText: {
+    fontSize: 18,
     color: '#374151',
-    fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 8,
+  },
+  speakerButtonSmall: {
+    marginLeft: 8,
+    padding: 6,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 20,
   },
   exampleBox: {
     backgroundColor: 'rgba(255, 255, 255, 0.6)',
@@ -684,5 +756,101 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '800',
-  }
+  },
+
+  /* ─── 결과 화면 ─── */
+  resultContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+    backgroundColor: '#F9FAFB',
+  },
+  resultTitle: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: '#111827',
+    marginBottom: 4,
+  },
+  resultSubtitle: {
+    fontSize: 16,
+    color: '#6B7280',
+    marginBottom: 32,
+  },
+  /* 원그래프 */
+  pieWrapper: {
+    width: 220,
+    height: 220,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  pieBase: {
+    position: 'absolute',
+  },
+  pieSeg: {
+    position: 'absolute',
+    borderWidth: 22,
+    borderColor: 'transparent',
+    borderTopColor: '#3B82F6',
+    borderRightColor: '#3B82F6',
+  },
+  pieCenter: {
+    position: 'absolute',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F9FAFB',
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+  },
+  piePercent: {
+    fontSize: 36,
+    fontWeight: '800',
+  },
+  pieLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+    marginTop: 2,
+  },
+  gradeText: {
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 28,
+  },
+  /* 통계 카드 */
+  statsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 36,
+  },
+  statCard: {
+    flex: 1,
+    borderRadius: 16,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  statNum: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#111827',
+  },
+  statLabel: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginTop: 4,
+  },
+  resultBtn: {
+    backgroundColor: '#3B82F6',
+    paddingVertical: 16,
+    paddingHorizontal: 48,
+    borderRadius: 16,
+    width: '100%',
+    alignItems: 'center',
+  },
+  resultBtnText: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '700',
+  },
 });

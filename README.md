@@ -1,85 +1,141 @@
-# Japeak (자피크) - AI 기반 일본어 학습 앱 🗻
+# Japeak (자피크) — AI 기반 일본어 학습 앱 🗻
 
 <div align="center">
-  <img src="./assets/screenshot_splash.png" alt="Japeak Splash" width="250" />
-  <img src="./assets/screenshot_login.png" alt="Japeak Login" width="250" />
-  <img src="./assets/screenshot_home.png" alt="Japeak Home" width="250" />
+
+![Japeak Banner](./assets/main_readme.png)
+
+**JLPT N1~N5 대응 · AI 맞춤형 퀴즈 · 한자 사전 · 단어장 · 오답 노트**
+
 </div>
 
-<br/>
+---
 
-Japeak은 JLPT(일본어 능력 시험) 및 기초 일본어 학습자를 위한 **AI 맞춤형 퀴즈 어플리케이션**입니다. 생성형 AI(Groq LLM)를 활용해 무한한 예문과 퀴즈를 실시간으로 생성하고, 사용자의 학습 수준에 맞춰 난이도를 자동 조절합니다.
+## 📖 프로젝트 소개
 
-해당 레포지토리는 프론트엔드(React Native)와 백엔드(Spring Boot)를 통합 관리하는 **Monorepo**입니다.
+**Japeak**은 JLPT(일본어 능력 시험) 및 기초 일본어 학습자를 위한 **AI 맞춤형 퀴즈 모바일 어플리케이션**입니다.
+
+Groq의 초고속 LLM(Llama 3.3 70B)을 활용해 실시간으로 일본어 퀴즈·예문·해석을 생성하고, 사용자의 정답률과 연속 정답 수에 따라 **난이도를 자동 조절**합니다. 퀴즈를 풀면서 모르는 한자를 바로 터치하여 뜻을 확인하고 발음도 들을 수 있으며, 3,700여 개의 JLPT 필수 단어와 2,600여 개의 상용 한자 사전이 내장되어 있습니다.
+
+이 레포지토리는 프론트엔드(React Native/Expo)와 백엔드(Spring Boot)를 통합 관리하는 **Monorepo**입니다.
 
 ---
 
-## 🛠 Tech Stack
+## ✨ 주요 기능
 
-### Frontend (`/frontend`)
-- **Framework**: React Native (Expo)
-- **Language**: TypeScript
-
-### Backend (`/backend`)
-- **Framework**: Spring Boot (Java)
-- **Database**: MySQL (Spring Data JPA)
-- **AI & LLM**: Groq API (Llama 3.3 70B)
-- **Security**: JWT (JSON Web Token) 기반 인증
-
----
-
-## 💡 핵심 아키텍처 (AI Quiz System)
-
-Japeak의 퀴즈 출제 로직은 API 토큰 낭비를 막고 사용자에게 끊김 없는 경험을 제공하기 위해 설계되었습니다.
-
-### 1. DB 기반 초고속 캐싱 출제
-   - **오답 노트 복습 (30%)**: 유저가 과거에 틀렸던 문제를 DB에서 무작위로 가져와 복습을 유도합니다.
-   - **새로운 단어 학습 (50%)**: AI가 과거에 생성해 DB에 저장해둔 퀴즈 데이터에서 새로운 문제를 출제합니다.
-
-### 2. 실시간 AI 맞춤형 출제
-   - DB에 적합한 퀴즈가 없을 때, **Groq AI**가 실시간으로 퀴즈를 생성합니다.
-   - 일본어 예문, 한국어 해석, 한자의 히라가나 발음, 부수(Radical) 해설까지 포함된 딥러닝 퀴즈를 생성합니다.
-   - **유효성 검증**: AI가 생성한 퀴즈의 내용이 비정상적이면 자동으로 재시도(최대 2회)합니다.
-   - 생성된 퀴즈는 **DB에 자동 저장**되어 다음에 재활용됩니다.
-
-### 3. 오답 노트 & 복습 시스템
-   - 틀린 문제는 DB에 자동 기록되어 오답 노트에 추가됩니다.
-   - 오답 복습 시에는 AI를 사용하지 않고 **DB에 저장된 데이터만으로** 문제를 출제합니다.
+| 기능 | 설명 |
+|---|---|
+| 🤖 **AI 맞춤형 퀴즈** | Groq LLM이 실시간으로 난이도별 단어/문장 퀴즈 생성, 예문·해석·한자 부수까지 포함 |
+| 📊 **결과 화면** | 퀴즈 완료 후 원형 그래프 애니메이션과 함께 정답 수·오답 수·정확도 표시 |
+| 📚 **JLPT 단어장** | N5~N1 레벨별 3,734개 단어를 Day별로 분류, 검색 기능 제공 |
+| 🈶 **한자 터치 사전** | 퀴즈·단어장 내 한자를 터치하면 한국어 뜻 즉시 표시 (Anki 덱 기반 2,633자) |
+| 🔊 **TTS 발음 듣기** | 단어·한자의 일본어 발음을 네이티브 TTS 엔진으로 즉시 재생 |
+| 🧠 **AI 음독/훈독 조회** | 원할 때만 "AI로 자세히 알아보기" 버튼으로 음독·훈독·부수 조회 |
+| 💡 **스마트 힌트** | 한자 문제는 히라가나 발음을 힌트로 제공, 히라가나 문제는 힌트 없음 |
+| 📝 **오답 노트** | 틀린 문제를 자동 기록, 오답만 모아서 재시험 가능 |
+| 🔁 **중복 방지** | 세션 내 출제된 단어를 서버에 전달하여 20문제 내 중복 없이 출제 |
+| 🔐 **JWT 인증** | 회원가입·로그인·토큰 기반 보안 API |
 
 ---
 
-## 🚀 프로젝트 실행 방법 (Getting Started)
+## 🛠 기술 스택
 
-### 1. 백엔드 실행 (Backend)
-MySQL 데이터베이스를 도커로 띄우고, AI API 키를 환경변수로 주입하여 스프링 부트 서버를 실행합니다.
+### Frontend
+- **React Native** (Expo SDK 51) — iOS/Android 크로스 플랫폼
+- **TypeScript** — 타입 안전성
+- **Zustand** — 전역 인증 상태 관리
+- **expo-speech** — 일본어 TTS 발음
+- **expo-blur / expo-linear-gradient** — 글래스모피즘 UI
 
-```bash
-cd backend
-docker-compose up -d
+### Backend
+- **Spring Boot 4.1** (Java 17) — REST API 서버
+- **Spring Data JPA + MySQL** — 데이터 퍼시스턴스
+- **Spring WebFlux WebClient** — 비동기 Groq API 호출
+- **JJWT 0.11.5** — JWT 토큰 발급·검증
+- **Groq API** (Llama 3.3 70B) — 퀴즈·한자 정보 AI 생성
+- **Lombok** — 보일러플레이트 코드 제거
+- **Docker / MySQL 8** — 로컬 개발 DB
 
-# API 키 주입 후 실행 (macOS/Linux)
-GROQ_API_KEY="your_groq_api_key" ./gradlew bootRun
+---
+
+## 💡 퀴즈 출제 아키텍처 (4단계 폴백)
+
+```
+1. [30%] 오답 복습 퀴즈 (DB) ───────────────── 세션 중복 단어 제외
+         ↓ 해당 없으면
+2. [50%] DB 캐시 퀴즈 재활용 ────────────────── 세션 중복 단어 제외
+         ↓ 해당 없으면
+3. [70%] JLPT 단어 기반 즉시 퀴즈 (AI 없음) ── recentWords 제외 쿼리
+         ↓ 해당 없으면
+4.       Groq AI 실시간 생성 (최대 2회 재시도) → DB 자동 저장
 ```
 
-### 2. 프론트엔드 실행 (Frontend)
+- 생성된 퀴즈는 DB에 저장되어 이후 단계 2에서 재활용됩니다.
+- 프론트엔드는 세션 전체 출제 단어를 `recentWords`로 백엔드에 전달합니다.
+
+---
+
+## 🚀 프로젝트 실행 방법
+
+### 1. 백엔드 실행
+```bash
+cd backend
+docker-compose up -d        # MySQL 8 컨테이너 시작
+
+# Groq API 키 주입 후 실행
+GROQ_API_KEY="gsk_xxxxx" ./gradlew bootRun
+```
+
+### 2. 프론트엔드 실행
 ```bash
 cd frontend
 npm install
-npx expo start -c
+npx expo start -c           # Expo Metro 번들러 시작
+```
+
+### 3. 한자 사전 DB 시드 (최초 1회)
+```bash
+cd backend
+python3 seed-kanji.py       # 2,633자 상용 한자 MySQL 삽입
 ```
 
 ---
 
-## 📂 폴더 구조 (Directory Structure)
-```text
-📦 Japeak
- ┣ 📂 frontend (Expo 앱)
- ┃ ┣ 📂 src/screens (화면 컴포넌트)
- ┃ ┣ 📂 src/utils (API 통신 등 유틸)
- ┃ ┗ 📜 App.tsx (앱 진입점)
- ┗ 📂 backend (Spring Boot 서버)
-   ┣ 📂 src/main/java/com/japeak/server/controller (REST API)
-   ┣ 📂 src/main/java/com/japeak/server/service (AI 통신 로직)
-   ┣ 📂 src/main/java/com/japeak/server/domain (DB 엔티티)
-   ┗ 📜 docker-compose.yml (MySQL DB 설정)
+## 📂 폴더 구조
+
 ```
+📦 Japeak/
+ ┣ 📂 frontend/                     ← React Native (Expo) 앱
+ ┃ ┣ 📂 src/
+ ┃ ┃ ┣ 📂 screens/                  ← 화면 컴포넌트 (8개)
+ ┃ ┃ ┣ 📂 components/               ← 재사용 컴포넌트 (KanjiWord, KanjiBottomSheet)
+ ┃ ┃ ┣ 📂 store/                    ← Zustand 전역 상태
+ ┃ ┃ ┗ 📂 utils/                    ← API 통신 함수
+ ┃ ┗ 📜 App.tsx                     ← 앱 진입점 / 네비게이션 설정
+ ┣ 📂 backend/                      ← Spring Boot 서버
+ ┃ ┣ 📂 src/main/java/com/japeak/server/
+ ┃ ┃ ┣ 📂 controller/               ← REST API 컨트롤러 (4개)
+ ┃ ┃ ┣ 📂 service/                  ← Groq AI 서비스
+ ┃ ┃ ┣ 📂 domain/                   ← JPA 엔티티 (5개)
+ ┃ ┃ ┣ 📂 repository/               ← Spring Data JPA 레포지토리
+ ┃ ┃ ┣ 📂 dto/                      ← 데이터 전송 객체
+ ┃ ┃ └ 📂 util/                     ← JWT 유틸
+ ┃ ┣ 📜 docker-compose.yml          ← MySQL 8 컨테이너 설정
+ ┃ ┗ 📜 seed-kanji.py               ← 한자 사전 초기 데이터 스크립트
+ ┗ 📂 assets/                       ← 앱 이미지·스크린샷
+```
+
+---
+
+## 🗃 데이터베이스 스키마 (주요 테이블)
+
+| 테이블 | 설명 |
+|---|---|
+| `users` | 회원 정보 (이메일, 비밀번호 해시) |
+| `quizzes` | AI·JLPT 기반으로 생성된 퀴즈 캐시 |
+| `user_quiz_logs` | 유저별 퀴즈 정답/오답 이력 |
+| `jlpt_words` | JLPT N5~N1 단어 3,734개 |
+| `kanji_dictionary` | 상용 한자 2,633자 (Anki 덱 추출) |
+
+---
+
+> 📄 상세 문서: [frontend/README.md](./frontend/README.md) · [backend/README.md](./backend/README.md)

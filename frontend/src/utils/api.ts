@@ -152,3 +152,100 @@ export const fetchQuizHistory = async (token: string | null, year: number, month
     return [];
   }
 };
+
+// JLPT 단어장 관련 인터페이스
+export interface JlptWord {
+  id: number;
+  level: string;
+  word: string;
+  reading: string;
+  meaning: string;
+  day: string;
+}
+
+export interface DayGroup {
+  day: string;
+  words: JlptWord[];
+}
+
+// JLPT 단어장 API - 레벨별 단어 목록 조회
+export const fetchVocabulary = async (token: string | null, level: string, page: number = 0): Promise<JlptWord[]> => {
+  if (!token) return [];
+  try {
+    const response = await fetch(`${BASE_URL}/api/vocabulary?level=${level}&page=${page}&size=50`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return data.content || data;
+  } catch (error) {
+    console.error('fetchVocabulary error:', error);
+    return [];
+  }
+};
+
+// JLPT 단어장 API - Day별 그룹핑된 단어 목록 조회
+export const fetchVocabularyDays = async (token: string | null, level: string): Promise<DayGroup[]> => {
+  if (!token) return [];
+  try {
+    const response = await fetch(`${BASE_URL}/api/vocabulary/days?level=${level}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (error) {
+    console.error('fetchVocabularyDays error:', error);
+    return [];
+  }
+};
+
+// JLPT 단어장 API - 단어 검색
+export const searchVocabulary = async (token: string | null, query: string): Promise<JlptWord[]> => {
+  if (!token) return [];
+  try {
+    const response = await fetch(`${BASE_URL}/api/vocabulary/search?q=${encodeURIComponent(query)}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (!response.ok) return [];
+    return await response.json();
+  } catch (error) {
+    console.error('searchVocabulary error:', error);
+    return [];
+  }
+};
+
+export interface KanjiInfo {
+  kanji: string;
+  meaning: string;
+}
+
+export interface KanjiAiInfo {
+  onyomi: string;
+  kunyomi: string;
+  radical: string;
+}
+
+export const fetchKanjiFromDB = async (token: string | null, character: string): Promise<KanjiInfo | null> => {
+  if (!token) return null;
+  try {
+    const res = await fetch(`${BASE_URL}/api/kanji/${encodeURIComponent(character)}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    if (res.status === 404) return null;
+    return await res.json();
+  } catch (e) {
+    return null;
+  }
+};
+
+export const fetchKanjiFromAI = async (token: string | null, character: string): Promise<KanjiAiInfo> => {
+  if (!token) throw new Error("Token is missing");
+  const res = await fetch(`${BASE_URL}/api/kanji/ai/${encodeURIComponent(character)}`, {
+    headers: { 'Authorization': `Bearer ${token}` }
+  });
+  if (!res.ok) {
+    const errorText = await res.text();
+    throw new Error(errorText || "서버 응답 오류");
+  }
+  return await res.json();
+};

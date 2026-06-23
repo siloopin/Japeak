@@ -3,11 +3,13 @@ package com.japeak.server.controller;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.japeak.server.domain.JlptWord;
 import com.japeak.server.domain.Quiz;
 import com.japeak.server.domain.User;
 import com.japeak.server.domain.UserQuizLog;
 import com.japeak.server.dto.QuizDto;
 import com.japeak.server.dto.HistoryLogDto;
+import com.japeak.server.repository.JlptWordRepository;
 import com.japeak.server.repository.QuizRepository;
 import com.japeak.server.repository.UserQuizLogRepository;
 import com.japeak.server.repository.UserRepository;
@@ -21,6 +23,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -34,6 +38,7 @@ public class QuizController {
 
     private final GeminiService geminiService;
     private final GroqService groqService;
+    private final JlptWordRepository jlptWordRepository;
     private final QuizRepository quizRepository;
     private final UserQuizLogRepository userQuizLogRepository;
     private final UserRepository userRepository;
@@ -59,25 +64,100 @@ public class QuizController {
         
         User user = getAuthenticatedUser(authHeader);
 
+        // recentWords 파싱 (쉼표로 구분된 단어 목록)
+        List<String> recentWordList = new ArrayList<>();
+        if (recentWords != null && !recentWords.trim().isEmpty()) {
+            String cleaned = recentWords.replaceAll("^\\[|\\]$", "").trim();
+            for (String w : cleaned.split(",")) {
+                String trimmed = w.trim();
+                if (!trimmed.isEmpty()) recentWordList.add(trimmed);
+            }
+        }
+
         // 1. 30% 확률로 오답 복습 문제 출제 (DB에서 가져옴, AI 사용 안 함)
         if (Math.random() < 0.3) {
             Optional<Quiz> incorrectQuizOpt = quizRepository.findRandomIncorrectQuizForUser(user.getId());
-            if (incorrectQuizOpt.isPresent()) {
+            // 이미 이번 세션에서 낸 단어는 건너뜀
+            if (incorrectQuizOpt.isPresent() && !recentWordList.contains(incorrectQuizOpt.get().getWord())) {
                 System.out.println("[Quiz] 오답 복습 문제 출제 (DB)");
                 return ResponseEntity.ok(convertToDto(incorrectQuizOpt.get(), difficulty));
             }
         }
 
-        // 2. DB에 이미 저장된 정상 퀴즈가 있으면 50% 확률로 재활용 (AI 사용 안 함)
+        // 2. DB에 이미 저장된 정상 퀴즈가 있으면 50% 확률로 재활용 (이번 세션 단어 제외)
         if (Math.random() < 0.5) {
             Optional<Quiz> randomQuizOpt = quizRepository.findRandomQuizForUser(difficulty, user.getId());
-            if (randomQuizOpt.isPresent()) {
+            if (randomQuizOpt.isPresent() && !recentWordList.contains(randomQuizOpt.get().getWord())) {
                 System.out.println("[Quiz] DB 저장 문제 재활용");
                 return ResponseEntity.ok(convertToDto(randomQuizOpt.get(), difficulty));
             }
         }
 
-        // 3. Groq AI로 새로운 퀴즈 생성 (최대 2회 재시도)
+        // 3. JLPT 단어 기반 즉시 퀴즈 생성 (AI 없이, 중복 방지 적용)
+        if (Math.random() < 0.7) {
+            try {
+                String jlptLevel = difficulty;
+                if ("Beginner".equals(difficulty)) jlptLevel = "N5";
+
+                // recentWords에 없는 단어로 뽑기
+                JlptWord targetWord = null;
+                if (!recentWordList.isEmpty()) {
+                    targetWord = jlptWordRepository.findRandomByLevelExcludingWords(jlptLevel, recentWordList);
+                }
+                // 제외 단어 목록이 없거나 fallback
+                if (targetWord == null) {
+                    targetWord = jlptWordRepository.findRandomByLevel(jlptLevel);
+                }
+                if (targetWord != null) {
+                    List<JlptWord> wrongOptions = jlptWordRepository.findRandomByLevelExcluding(jlptLevel, targetWord.getId());
+                    if (wrongOptions.size() >= 3) {
+                        System.out.println("[Quiz] JLPT 단어 기반 즉시 퀴즈: " + targetWord.getWord());
+                        
+                        // 선지 구성 (정답 + 오답 3개의 한국어 뜻)
+                        List<String> options = new ArrayList<>();
+                        options.add(targetWord.getMeaning());
+                        for (JlptWord w : wrongOptions) {
+                            options.add(w.getMeaning());
+                        }
+                        Collections.shuffle(options);
+
+                        // QuizDto 구성
+                        QuizDto dto = new QuizDto();
+                        dto.setType("word");
+                        dto.setQuestion(targetWord.getWord());
+                        dto.setQuestion_meaning(targetWord.getMeaning());
+                        dto.setOptions(options);
+                        dto.setAnswer(targetWord.getMeaning());
+                        dto.setWord(targetWord.getWord());
+                        dto.setReading(targetWord.getReading());
+                        dto.setMeaning(targetWord.getMeaning());
+                        dto.setNew_difficulty(difficulty);
+                        dto.setKanji_words(new ArrayList<>());
+
+                        // DB에도 저장 (오답 노트 등에 활용)
+                        Quiz quiz = new Quiz();
+                        quiz.setDifficulty(difficulty);
+                        quiz.setType("word");
+                        quiz.setQuestion(targetWord.getWord());
+                        quiz.setQuestionMeaning(targetWord.getMeaning());
+                        quiz.setAnswer(targetWord.getMeaning());
+                        quiz.setOptionsJson(objectMapper.writeValueAsString(options));
+                        quiz.setWord(targetWord.getWord());
+                        quiz.setReading(targetWord.getReading());
+                        quiz.setMeaning(targetWord.getMeaning());
+                        quiz.setKanjiWordsJson("[]");
+                        quizRepository.save(quiz);
+                        dto.setId(quiz.getId());
+
+                        return ResponseEntity.ok(dto);
+                    }
+                }
+            } catch (Exception e) {
+                System.err.println("[Quiz] JLPT 단어 기반 퀴즈 생성 실패: " + e.getMessage());
+            }
+        }
+
+        // 4. Groq AI로 새로운 퀴즈 생성 (최대 2회 재시도)
         boolean isSimple = Math.random() < 0.5; // 50% 단어형, 50% 복합형
         
         for (int attempt = 1; attempt <= 2; attempt++) {
@@ -143,6 +223,32 @@ public class QuizController {
                     if (fallbackQuiz.isPresent()) {
                         return ResponseEntity.ok(convertToDto(fallbackQuiz.get(), difficulty));
                     } else {
+                        System.out.println("[Quiz] DB에 폴백 퀴즈 없음, 최후의 수단으로 JLPT 즉석 퀴즈 출제");
+                        String jlptLevel = "Beginner".equals(difficulty) ? "N5" : difficulty;
+                        JlptWord targetWord = jlptWordRepository.findRandomByLevel(jlptLevel);
+                        if (targetWord != null) {
+                            List<JlptWord> wrongOptions = jlptWordRepository.findRandomByLevelExcluding(jlptLevel, targetWord.getId());
+                            if (wrongOptions.size() >= 3) {
+                                List<String> options = new ArrayList<>();
+                                options.add(targetWord.getMeaning());
+                                for (JlptWord w : wrongOptions) {
+                                    options.add(w.getMeaning());
+                                }
+                                Collections.shuffle(options);
+                                QuizDto dto = new QuizDto();
+                                dto.setType("word");
+                                dto.setQuestion(targetWord.getWord());
+                                dto.setQuestion_meaning(targetWord.getMeaning());
+                                dto.setOptions(options);
+                                dto.setAnswer(targetWord.getMeaning());
+                                dto.setWord(targetWord.getWord());
+                                dto.setReading(targetWord.getReading());
+                                dto.setMeaning(targetWord.getMeaning());
+                                dto.setNew_difficulty(difficulty);
+                                dto.setKanji_words(new ArrayList<>());
+                                return ResponseEntity.ok(dto);
+                            }
+                        }
                         throw new RuntimeException("AI 퀴즈 생성 실패 및 DB에 폴백 퀴즈 없음", e);
                     }
                 }

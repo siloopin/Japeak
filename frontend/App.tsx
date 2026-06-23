@@ -10,6 +10,7 @@ import SplashScreen from './src/screens/SplashScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import LevelSelectScreen from './src/screens/LevelSelectScreen';
 import ReviewNoteScreen from './src/screens/ReviewNoteScreen';
+import VocabularyScreen from './src/screens/VocabularyScreen';
 
 import { useAuthStore } from './src/store/authStore';
 
@@ -22,6 +23,7 @@ export type RootStackParamList = {
   Chat: undefined;
   Login: undefined;
   LevelSelect: undefined;
+  Vocabulary: { initialLevel?: string } | undefined;
   ReviewNote: undefined;
 };
 
@@ -91,6 +93,11 @@ export default function App() {
               name="Chat" 
               component={ChatScreen} 
               options={{ title: 'AI 회화 연습' }} 
+            />
+            <Stack.Screen 
+              name="Vocabulary" 
+              component={VocabularyScreen} 
+              options={{ title: 'JLPT 단어장', headerBackTitle: '홈' }} 
             />
             <Stack.Screen 
               name="ReviewNote" 

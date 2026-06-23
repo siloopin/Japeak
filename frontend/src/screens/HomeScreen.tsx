@@ -20,7 +20,7 @@ export default function HomeScreen({ navigation }: Props) {
   return (
     <View style={styles.container}>
       {/* 깔끔하고 밝은 토스/인스타 스타일 배경 */}
-      <View style={StyleSheet.absoluteFillObject} backgroundColor="#F9FAFB" />
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: '#F9FAFB' }]} />
       
       {/* 은은한 파스텔톤 배경 장식 (글래스모피즘 효과 극대화) */}
       <View style={[styles.bgCircle, { top: -50, left: -50, backgroundColor: '#DBEAFE' }]} />
@@ -84,6 +84,24 @@ export default function HomeScreen({ navigation }: Props) {
                 </Text>
                 <View style={styles.actionButton}>
                   <Text style={styles.actionButtonText}>대화 시작하기</Text>
+                </View>
+              </BlurView>
+            </TouchableOpacity>
+
+            {/* JLPT 단어장 카드 */}
+            <TouchableOpacity activeOpacity={0.7} onPress={() => navigation.navigate('Vocabulary')}>
+              <BlurView intensity={80} tint="light" style={styles.glassCard}>
+                <View style={styles.cardHeader}>
+                  <Text style={styles.cardTitle}>📚 JLPT 단어장</Text>
+                  <LinearGradient colors={['#2563EB', '#3B82F6']} style={styles.tag}>
+                    <Text style={styles.tagText}>3,734 단어</Text>
+                  </LinearGradient>
+                </View>
+                <Text style={styles.cardDesc}>
+                  N5부터 N1까지 JLPT 필수 단어를 학습하세요.
+                </Text>
+                <View style={styles.actionButton}>
+                  <Text style={styles.actionButtonText}>단어장 열기</Text>
                 </View>
               </BlurView>
             </TouchableOpacity>

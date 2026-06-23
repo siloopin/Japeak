@@ -189,4 +189,63 @@ public class GroqService {
             throw new RuntimeException("Failed to call Groq API", e);
         }
     }
+
+    public String getKanjiDetails(String kanji) {
+        if (apiKey == null || apiKey.trim().isEmpty()) {
+            throw new RuntimeException("GROQ API Key is missing");
+        }
+
+        String systemPrompt = "You are a Japanese Kanji dictionary. Provide the onyomi(음독), kunyomi(훈독), and radical(부수) for the requested Kanji. Output ONLY valid JSON.";
+        String userPrompt = "Provide details for the Kanji: " + kanji + "\n" +
+                "Expected JSON format:\n" +
+                "{\n" +
+                "  \"onyomi\": \"ショウ\",\n" +
+                "  \"kunyomi\": \"となえる\",\n" +
+                "  \"radical\": \"口\"\n" +
+                "}";
+
+        Map<String, Object> requestBody = Map.of(
+            "model", "llama-3.3-70b-versatile",
+            "messages", List.of(
+                Map.of("role", "system", "content", systemPrompt),
+                Map.of("role", "user", "content", userPrompt)
+            ),
+            "temperature", 0.3,
+            "max_tokens", 512,
+            "response_format", Map.of("type", "json_object")
+        );
+
+        try {
+            Map response = webClient.post()
+                    .uri(apiUrl)
+                    .header("Authorization", "Bearer " + apiKey)
+                    .header("Content-Type", "application/json")
+                    .bodyValue(requestBody)
+                    .retrieve()
+                    .bodyToMono(Map.class)
+                    .block();
+
+            List<Map<String, Object>> choices = (List<Map<String, Object>>) response.get("choices");
+            Map<String, Object> message = (Map<String, Object>) choices.get(0).get("message");
+            String content = ((String) message.get("content")).trim();
+
+            // 마크다운 코드블록 제거
+            if (content.startsWith("```json")) {
+                content = content.substring(7);
+            } else if (content.startsWith("```")) {
+                content = content.substring(3);
+            }
+            if (content.endsWith("```")) {
+                content = content.substring(0, content.length() - 3);
+            }
+
+            return content.trim();
+        } catch (WebClientResponseException e) {
+            System.err.println("Groq API HTTP Error [" + e.getStatusCode() + "]: " + e.getResponseBodyAsString());
+            throw new RuntimeException("Groq API Error: " + e.getStatusCode() + " - " + e.getResponseBodyAsString(), e);
+        } catch (Exception e) {
+            System.err.println("Groq API unexpected error: " + e.getMessage());
+            throw new RuntimeException("Failed to call Groq API", e);
+        }
+    }
 }
